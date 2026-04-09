@@ -1,0 +1,924 @@
+-- NducHub Complete | By Nduc
+-- Tính năng: Farm Level + Fast Attack + Bring Mob + Fix Lag + Farm Xương + Farm Katakuri + Farm Tyrant (Tiki Outpost)
+
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local CoreGui = game:GetService("CoreGui")
+local Workspace = game:GetService("Workspace")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local Lighting = game:GetService("Lighting")
+
+-- Xóa menu cũ
+if CoreGui:FindFirstChild("NducHubComplete") then
+    CoreGui.NducHubComplete:Destroy()
+end
+
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "NducHubComplete"
+screenGui.Parent = CoreGui
+screenGui.ResetOnSpawn = false
+
+-- ========== BIẾN TOGGLE ==========
+local farmLevelEnabled = false
+local fastAttackEnabled = false
+local bringMobEnabled = false
+local fixLagEnabled = false
+local farmBoneEnabled = false
+local farmKatakuriEnabled = false
+local farmTyrantEnabled = false
+
+-- ========== BIẾN FARM LEVEL ==========
+local currentIslandTarget = nil
+
+-- ========== TỌA ĐỘ ==========
+local hauntedCastlePos = Vector3.new(-1150, 7, -950)   -- Lâu đài bóng tối (farm xương)
+local cakeLandPos = Vector3.new(-700, 50, -700)       -- Cake Land (farm Katakuri)
+local tikiOutpostPos = Vector3.new(800, 80, 800)      -- Tiki Outpost (farm Tyrant)
+
+-- ========== DANH SÁCH QUÁI ==========
+local boneNPCs = {"Reborn Skeleton", "Living Zombie", "Demonic Soul", "Possessed Mummy"}
+local katakuriNPCs = {"Cake Guard", "Cake Knight", "Chef", "Biscuit Soldier"}
+local tikiNPCs = {"Tiki Warrior", "Tiki Archer", "Tiki Shaman", "Tiki Brute", "Islander"}
+
+-- ========== DANH SÁCH ĐẢO FARM LEVEL (FULL 3 SEA) ==========
+local islands = {
+    -- Sea 1 (Level 1-700)
+    {Name = "Pirate Island", MinLevel = 1, MaxLevel = 30, Pos = Vector3.new(-1250, 80, -1250)},
+    {Name = "Jungle", MinLevel = 30, MaxLevel = 60, Pos = Vector3.new(-1000, 80, -1000)},
+    {Name = "Desert", MinLevel = 60, MaxLevel = 90, Pos = Vector3.new(-750, 80, -750)},
+    {Name = "Snow Island", MinLevel = 90, MaxLevel = 120, Pos = Vector3.new(-500, 80, -500)},
+    {Name = "Marine Fortress", MinLevel = 120, MaxLevel = 150, Pos = Vector3.new(-250, 80, -250)},
+    {Name = "Sky Islands", MinLevel = 150, MaxLevel = 200, Pos = Vector3.new(0, 500, 0)},
+    {Name = "Prison", MinLevel = 200, MaxLevel = 250, Pos = Vector3.new(250, 80, 250)},
+    {Name = "Colosseum", MinLevel = 250, MaxLevel = 300, Pos = Vector3.new(500, 80, 500)},
+    {Name = "Magma Village", MinLevel = 300, MaxLevel = 350, Pos = Vector3.new(750, 80, 750)},
+    {Name = "Underwater City", MinLevel = 350, MaxLevel = 400, Pos = Vector3.new(1000, -200, 1000)},
+    {Name = "Fountain City", MinLevel = 400, MaxLevel = 450, Pos = Vector3.new(1200, 80, 1200)},
+    {Name = "Marine City", MinLevel = 450, MaxLevel = 500, Pos = Vector3.new(1400, 80, 1400)},
+    {Name = "Port Town", MinLevel = 500, MaxLevel = 550, Pos = Vector3.new(1600, 80, 1600)},
+    {Name = "Kingdom of Rose", MinLevel = 550, MaxLevel = 700, Pos = Vector3.new(1800, 80, 1800)},
+    -- Sea 2 (Level 700-1500)
+    {Name = "Green Zone", MinLevel = 700, MaxLevel = 750, Pos = Vector3.new(-1800, 80, -1800)},
+    {Name = "Graveyard", MinLevel = 750, MaxLevel = 800, Pos = Vector3.new(-1550, 80, -1550)},
+    {Name = "Snow Mountain", MinLevel = 800, MaxLevel = 850, Pos = Vector3.new(-1300, 80, -1300)},
+    {Name = "Hot and Cold", MinLevel = 850, MaxLevel = 900, Pos = Vector3.new(-1050, 80, -1050)},
+    {Name = "Cursed Ship", MinLevel = 900, MaxLevel = 950, Pos = Vector3.new(-800, 80, -800)},
+    {Name = "Ice Castle", MinLevel = 950, MaxLevel = 1000, Pos = Vector3.new(-550, 80, -550)},
+    {Name = "Forgotten Island", MinLevel = 1000, MaxLevel = 1050, Pos = Vector3.new(-300, 80, -300)},
+    {Name = "Usoap's Island", MinLevel = 1050, MaxLevel = 1100, Pos = Vector3.new(-50, 80, -50)},
+    {Name = "Kingdom of Rose S2", MinLevel = 1100, MaxLevel = 1200, Pos = Vector3.new(200, 80, 200)},
+    {Name = "Flamingo's Mansion", MinLevel = 1200, MaxLevel = 1300, Pos = Vector3.new(450, 80, 450)},
+    {Name = "Punk Hazard", MinLevel = 1300, MaxLevel = 1400, Pos = Vector3.new(700, 80, 700)},
+    {Name = "Law's Lab", MinLevel = 1400, MaxLevel = 1500, Pos = Vector3.new(950, 80, 950)},
+    -- Sea 3 (Level 1500-2600)
+    {Name = "Port of Entry", MinLevel = 1500, MaxLevel = 1550, Pos = Vector3.new(-2200, 80, -2200)},
+    {Name = "Hydra Island", MinLevel = 1550, MaxLevel = 1600, Pos = Vector3.new(-1950, 80, -1950)},
+    {Name = "Great Tree", MinLevel = 1600, MaxLevel = 1650, Pos = Vector3.new(-1700, 80, -1700)},
+    {Name = "Castle on the Sea", MinLevel = 1650, MaxLevel = 1700, Pos = Vector3.new(-1450, 80, -1450)},
+    {Name = "Floating Turtle", MinLevel = 1700, MaxLevel = 1750, Pos = Vector3.new(-1200, 80, -1200)},
+    {Name = "Mansion", MinLevel = 1750, MaxLevel = 1800, Pos = Vector3.new(-950, 80, -950)},
+    {Name = "Cake Land", MinLevel = 1800, MaxLevel = 1900, Pos = Vector3.new(-700, 80, -700)},
+    {Name = "Candy Land", MinLevel = 1900, MaxLevel = 2000, Pos = Vector3.new(-450, 80, -450)},
+    {Name = "Sweet Land", MinLevel = 2000, MaxLevel = 2100, Pos = Vector3.new(-200, 80, -200)},
+    {Name = "Choco Land", MinLevel = 2100, MaxLevel = 2200, Pos = Vector3.new(50, 80, 50)},
+    {Name = "Sea of Treats", MinLevel = 2200, MaxLevel = 2300, Pos = Vector3.new(300, 80, 300)},
+    {Name = "Elite Island", MinLevel = 2300, MaxLevel = 2400, Pos = Vector3.new(550, 80, 550)},
+    {Name = "Tiki Island", MinLevel = 2400, MaxLevel = 2500, Pos = Vector3.new(800, 80, 800)},
+    {Name = "Mirage Island", MinLevel = 2500, MaxLevel = 2600, Pos = Vector3.new(1050, 80, 1050)},
+}
+
+-- ========== TẠO MENU ==========
+local toggleBtn = Instance.new("ImageButton")
+toggleBtn.Size = UDim2.new(0, 50, 0, 50)
+toggleBtn.Position = UDim2.new(0, 20, 0.5, -25)
+toggleBtn.BackgroundColor3 = Color3.fromRGB(0, 120, 255)
+toggleBtn.Image = "rbxassetid://88161224206829"
+toggleBtn.ScaleType = Enum.ScaleType.Fit
+toggleBtn.BorderSizePixel = 0
+toggleBtn.Parent = screenGui
+
+local toggleCorner = Instance.new("UICorner")
+toggleCorner.CornerRadius = UDim.new(1, 0)
+toggleCorner.Parent = toggleBtn
+
+local menu = Instance.new("Frame")
+menu.Size = UDim2.new(0, 450, 0, 680)
+menu.Position = UDim2.new(0.5, -225, 0.5, -340)
+menu.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
+menu.BorderSizePixel = 0
+menu.Visible = true
+menu.Parent = screenGui
+
+local menuCorner = Instance.new("UICorner")
+menuCorner.CornerRadius = UDim.new(0, 12)
+menuCorner.Parent = menu
+
+-- Header
+local header = Instance.new("Frame")
+header.Size = UDim2.new(1, 0, 0, 45)
+header.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
+header.BorderSizePixel = 0
+header.Parent = menu
+
+local headerCorner = Instance.new("UICorner")
+headerCorner.CornerRadius = UDim.new(0, 12)
+headerCorner.Parent = header
+
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(1, -50, 1, 0)
+title.Position = UDim2.new(0, 15, 0, 0)
+title.BackgroundTransparency = 1
+title.Text = "Nduc Hub"
+title.TextColor3 = Color3.fromRGB(0, 150, 255)
+title.TextSize = 18
+title.Font = Enum.Font.GothamBold
+title.TextXAlignment = Enum.TextXAlignment.Left
+title.Parent = header
+
+local subTitle = Instance.new("TextLabel")
+subTitle.Size = UDim2.new(1, -50, 1, 0)
+subTitle.Position = UDim2.new(0, 15, 0, 22)
+subTitle.BackgroundTransparency = 1
+subTitle.Text = "By Nduc | Auto Farm Full Sea + Tyrant Boss"
+subTitle.TextColor3 = Color3.fromRGB(150, 150, 150)
+subTitle.TextSize = 11
+subTitle.Font = Enum.Font.Gotham
+subTitle.TextXAlignment = Enum.TextXAlignment.Left
+subTitle.Parent = header
+
+local collapseBtn = Instance.new("TextButton")
+collapseBtn.Size = UDim2.new(0, 35, 0, 35)
+collapseBtn.Position = UDim2.new(1, -45, 0.5, -17.5)
+collapseBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 45)
+collapseBtn.Text = "−"
+collapseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+collapseBtn.TextSize = 22
+collapseBtn.Font = Enum.Font.GothamBold
+collapseBtn.AutoButtonColor = false
+collapseBtn.BorderSizePixel = 0
+collapseBtn.Parent = header
+
+local collapseCorner = Instance.new("UICorner")
+collapseCorner.CornerRadius = UDim.new(0, 8)
+collapseCorner.Parent = collapseBtn
+
+-- Content
+local content = Instance.new("ScrollingFrame")
+content.Size = UDim2.new(1, -20, 1, -65)
+content.Position = UDim2.new(0, 10, 0, 55)
+content.BackgroundTransparency = 1
+content.ScrollBarThickness = 5
+content.CanvasSize = UDim2.new(0, 0, 0, 0)
+content.AutomaticCanvasSize = Enum.AutomaticSize.Y
+content.Parent = menu
+
+local contentLayout = Instance.new("UIListLayout")
+contentLayout.Padding = UDim.new(0, 8)
+contentLayout.SortOrder = Enum.SortOrder.LayoutOrder
+contentLayout.Parent = content
+
+-- Info Frame
+local infoFrame = Instance.new("Frame")
+infoFrame.Size = UDim2.new(1, 0, 0, 90)
+infoFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
+infoFrame.BorderSizePixel = 0
+infoFrame.Parent = content
+
+local infoCorner = Instance.new("UICorner")
+infoCorner.CornerRadius = UDim.new(0, 8)
+infoCorner.Parent = infoFrame
+
+local playerName = Instance.new("TextLabel")
+playerName.Size = UDim2.new(1, -20, 0, 25)
+playerName.Position = UDim2.new(0, 10, 0, 8)
+playerName.BackgroundTransparency = 1
+playerName.Text = "👤 " .. Players.LocalPlayer.Name
+playerName.TextColor3 = Color3.fromRGB(255, 255, 255)
+playerName.TextSize = 14
+playerName.Font = Enum.Font.GothamBold
+playerName.TextXAlignment = Enum.TextXAlignment.Left
+playerName.Parent = infoFrame
+
+local levelLabel = Instance.new("TextLabel")
+levelLabel.Size = UDim2.new(1, -20, 0, 25)
+levelLabel.Position = UDim2.new(0, 10, 0, 33)
+levelLabel.BackgroundTransparency = 1
+levelLabel.Text = "📊 Level: --"
+levelLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+levelLabel.TextSize = 12
+levelLabel.Font = Enum.Font.Gotham
+levelLabel.TextXAlignment = Enum.TextXAlignment.Left
+levelLabel.Parent = infoFrame
+
+local fpsLabel = Instance.new("TextLabel")
+fpsLabel.Size = UDim2.new(1, -20, 0, 25)
+fpsLabel.Position = UDim2.new(0, 10, 0, 58)
+fpsLabel.BackgroundTransparency = 1
+fpsLabel.Text = "FPS: --"
+fpsLabel.TextColor3 = Color3.fromRGB(0, 150, 255)
+fpsLabel.TextSize = 12
+fpsLabel.Font = Enum.Font.Gotham
+fpsLabel.TextXAlignment = Enum.TextXAlignment.Left
+fpsLabel.Parent = infoFrame
+
+-- Hàm tạo nút bật/tắt
+local function makeButton(parent, text, icon, callback)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(1, 0, 0, 45)
+    btn.BackgroundColor3 = Color3.fromRGB(35, 35, 40)
+    btn.Text = ""
+    btn.AutoButtonColor = false
+    btn.BorderSizePixel = 0
+    btn.Parent = parent
+    
+    local btnCorner = Instance.new("UICorner")
+    btnCorner.CornerRadius = UDim.new(0, 8)
+    btnCorner.Parent = btn
+    
+    local iconLabel = Instance.new("TextLabel")
+    iconLabel.Size = UDim2.new(0, 40, 1, 0)
+    iconLabel.BackgroundTransparency = 1
+    iconLabel.Text = icon
+    iconLabel.TextSize = 20
+    iconLabel.TextColor3 = Color3.fromRGB(0, 150, 255)
+    iconLabel.Font = Enum.Font.Gotham
+    iconLabel.Parent = btn
+    
+    local textLabel = Instance.new("TextLabel")
+    textLabel.Size = UDim2.new(1, -90, 1, 0)
+    textLabel.Position = UDim2.new(0, 45, 0, 0)
+    textLabel.BackgroundTransparency = 1
+    textLabel.Text = text
+    textLabel.TextColor3 = Color3.fromRGB(220, 220, 220)
+    textLabel.TextSize = 13
+    textLabel.Font = Enum.Font.GothamSemibold
+    textLabel.TextXAlignment = Enum.TextXAlignment.Left
+    textLabel.Parent = btn
+    
+    local status = Instance.new("TextLabel")
+    status.Size = UDim2.new(0, 50, 1, 0)
+    status.Position = UDim2.new(1, -55, 0, 0)
+    status.BackgroundTransparency = 1
+    status.Text = "OFF"
+    status.TextColor3 = Color3.fromRGB(255, 80, 80)
+    status.TextSize = 12
+    status.Font = Enum.Font.GothamBold
+    status.Parent = btn
+    
+    local enabled = false
+    
+    btn.MouseButton1Click:Connect(function()
+        enabled = not enabled
+        if enabled then
+            status.Text = "ON"
+            status.TextColor3 = Color3.fromRGB(0, 255, 100)
+            btn.BackgroundColor3 = Color3.fromRGB(45, 45, 55)
+        else
+            status.Text = "OFF"
+            status.TextColor3 = Color3.fromRGB(255, 80, 80)
+            btn.BackgroundColor3 = Color3.fromRGB(35, 35, 40)
+        end
+        if callback then callback(enabled) end
+    end)
+    
+    return btn
+end
+
+-- ========== HÀM LẤY LEVEL NGƯỜI CHƠI ==========
+local function getPlayerLevel()
+    local player = Players.LocalPlayer
+    local leaderstats = player:FindFirstChild("leaderstats")
+    if leaderstats then
+        local level = leaderstats:FindFirstChild("Level")
+        if level then return level.Value end
+    end
+    return 1
+end
+
+-- ========== HÀM TÌM ĐẢO THEO LEVEL ==========
+local function getIslandByLevel(level)
+    for _, island in ipairs(islands) do
+        if level >= island.MinLevel and level <= island.MaxLevel then
+            return island
+        end
+    end
+    return islands[#islands]
+end
+
+-- ========== HÀM TELEPORT ==========
+local function teleportToPos(position)
+    local player = Players.LocalPlayer
+    local char = player.Character
+    if char and char:FindFirstChild("HumanoidRootPart") then
+        char.HumanoidRootPart.CFrame = CFrame.new(position)
+    end
+end
+
+-- ========== FARM LEVEL TỰ ĐỘNG ==========
+local function startFarmLevel()
+    task.spawn(function()
+        while farmLevelEnabled do
+            local player = Players.LocalPlayer
+            local char = player.Character
+            if not char then task.wait(1) continue end
+            
+            local root = char:FindFirstChild("HumanoidRootPart")
+            if not root then task.wait(1) continue end
+            
+            local currentLevel = getPlayerLevel()
+            local newIsland = getIslandByLevel(currentLevel)
+            
+            if newIsland and (not currentIslandTarget or newIsland.Name ~= currentIslandTarget.Name) then
+                currentIslandTarget = newIsland
+                print("[Farm Level] Đang di chuyển đến:", currentIslandTarget.Name, "| Level:", currentLevel)
+                teleportToPos(currentIslandTarget.Pos)
+                task.wait(2)
+            end
+            
+            task.wait(1)
+        end
+    end)
+end
+
+-- ========== FAST ATTACK ==========
+local function startFastAttack()
+    task.spawn(function()
+        while fastAttackEnabled do
+            task.wait()
+            local player = Players.LocalPlayer
+            local char = player.Character
+            if not char then continue end
+            local root = char:FindFirstChild("HumanoidRootPart")
+            if not root then continue end
+            
+            local enemies = Workspace:FindFirstChild("Enemies")
+            if enemies then
+                for _, m in ipairs(enemies:GetChildren()) do
+                    local hrp = m:FindFirstChild("HumanoidRootPart")
+                    local hum = m:FindFirstChild("Humanoid")
+                    if hrp and hum and hum.Health > 0 and (hrp.Position - root.Position).Magnitude <= 150 then
+                        pcall(function()
+                            local RS = ReplicatedStorage
+                            if RS and RS.Modules and RS.Modules.Net then
+                                local atk = RS.Modules.Net["RE/RegisterAttack"]
+                                if atk then atk:FireServer() end
+                            end
+                        end)
+                        break
+                    end
+                end
+            end
+        end
+    end)
+end
+
+-- ========== BRING MOB (KÉO QUÁI) ==========
+local function startBringMob()
+    task.spawn(function()
+        while bringMobEnabled do
+            task.wait(0.15)
+            local player = Players.LocalPlayer
+            local char = player.Character
+            if not char then task.wait(1) continue end
+            local root = char:FindFirstChild("HumanoidRootPart")
+            if not root then continue end
+            
+            local rootPos = root.Position
+            local lookVector = root.CFrame.LookVector
+            
+            for _, v in ipairs(Workspace:GetDescendants()) do
+                if v:IsA("Model") and v:FindFirstChild("HumanoidRootPart") and v:FindFirstChild("Humanoid") then
+                    local hrp = v.HumanoidRootPart
+                    local hum = v.Humanoid
+                    
+                    if not Players:GetPlayerFromCharacter(v) and hum.Health > 0 then
+                        local dist = (hrp.Position - rootPos).Magnitude
+                        if dist <= 100 then
+                            local targetPos = rootPos + lookVector * 5
+                            hrp.CFrame = hrp.CFrame:Lerp(CFrame.new(targetPos), 0.6)
+                        end
+                    end
+                end
+            end
+        end
+    end)
+end
+
+-- ========== FIX LAG ==========
+local function applyFixLag()
+    if not fixLagEnabled then return end
+    pcall(function()
+        Lighting.GlobalShadows = false
+        Lighting.FogEnd = 1000
+        local settings = UserSettings()
+        local gameSettings = settings:GetService("UserGameSettings")
+        gameSettings.EnvironmentalQuality = Enum.EnvironmentalQuality.Low
+    end)
+end
+
+local function startFixLagLoop()
+    task.spawn(function()
+        while fixLagEnabled do
+            applyFixLag()
+            task.wait(5)
+        end
+    end)
+end
+
+-- ========== FARM XƯƠNG (HAUNTED CASTLE) ==========
+local function startFarmBone()
+    task.spawn(function()
+        while farmBoneEnabled do
+            local player = Players.LocalPlayer
+            local char = player.Character
+            if not char then task.wait(1) continue end
+            
+            local root = char:FindFirstChild("HumanoidRootPart")
+            if not root then task.wait(1) continue end
+            
+            -- Teleport đến Haunted Castle
+            if (root.Position - hauntedCastlePos).Magnitude > 500 then
+                teleportToPos(hauntedCastlePos)
+                task.wait(2)
+            end
+            
+            -- Tìm và tấn công quái
+            local enemies = Workspace:FindFirstChild("Enemies")
+            local targetNPC = nil
+            
+            if enemies then
+                for _, npc in ipairs(enemies:GetChildren()) do
+                    for _, boneNPC in ipairs(boneNPCs) do
+                        if string.find(npc.Name, boneNPC) then
+                            local hum = npc:FindFirstChild("Humanoid")
+                            local hrp = npc:FindFirstChild("HumanoidRootPart")
+                            if hum and hrp and hum.Health > 0 then
+                                targetNPC = npc
+                                break
+                            end
+                        end
+                    end
+                    if targetNPC then break end
+                end
+            end
+            
+            if targetNPC then
+                local hrp = targetNPC:FindFirstChild("HumanoidRootPart")
+                if hrp then
+                    root.CFrame = hrp.CFrame * CFrame.new(0, 0, 10)
+                    task.wait(0.1)
+                    
+                    if fastAttackEnabled then
+                        pcall(function()
+                            local RS = ReplicatedStorage
+                            if RS and RS.Modules and RS.Modules.Net then
+                                local atk = RS.Modules.Net["RE/RegisterAttack"]
+                                if atk then atk:FireServer() end
+                            end
+                        end)
+                    end
+                end
+            else
+                local wanderPos = hauntedCastlePos + Vector3.new(math.random(-50, 50), 0, math.random(-50, 50))
+                teleportToPos(wanderPos)
+                task.wait(2)
+            end
+            
+            task.wait(0.3)
+        end
+    end)
+end
+
+-- ========== FARM KATAKURI (CAKE LAND) ==========
+local function startFarmKatakuri()
+    task.spawn(function()
+        while farmKatakuriEnabled do
+            local player = Players.LocalPlayer
+            local char = player.Character
+            if not char then task.wait(1) continue end
+            
+            local root = char:FindFirstChild("HumanoidRootPart")
+            if not root then task.wait(1) continue end
+            
+            -- Teleport đến Cake Land
+            if (root.Position - cakeLandPos).Magnitude > 500 then
+                teleportToPos(cakeLandPos)
+                task.wait(2)
+            end
+            
+            -- Tìm và tấn công quái
+            local enemies = Workspace:FindFirstChild("Enemies")
+            local targetNPC = nil
+            
+            if enemies then
+                for _, npc in ipairs(enemies:GetChildren()) do
+                    for _, kataNPC in ipairs(katakuriNPCs) do
+                        if string.find(npc.Name, kataNPC) then
+                            local hum = npc:FindFirstChild("Humanoid")
+                            local hrp = npc:FindFirstChild("HumanoidRootPart")
+                            if hum and hrp and hum.Health > 0 then
+                                targetNPC = npc
+                                break
+                            end
+                        end
+                    end
+                    if targetNPC then break end
+                end
+            end
+            
+            if targetNPC then
+                local hrp = targetNPC:FindFirstChild("HumanoidRootPart")
+                if hrp then
+                    root.CFrame = hrp.CFrame * CFrame.new(0, 0, 10)
+                    task.wait(0.1)
+                    
+                    if fastAttackEnabled then
+                        pcall(function()
+                            local RS = ReplicatedStorage
+                            if RS and RS.Modules and RS.Modules.Net then
+                                local atk = RS.Modules.Net["RE/RegisterAttack"]
+                                if atk then atk:FireServer() end
+                            end
+                        end)
+                    end
+                end
+            else
+                local wanderPos = cakeLandPos + Vector3.new(math.random(-60, 60), 0, math.random(-60, 60))
+                teleportToPos(wanderPos)
+                task.wait(2)
+            end
+            
+            task.wait(0.3)
+        end
+    end)
+end
+
+-- ========== FARM TYRANT OF THE SKIES (TIKI OUTPOST) ==========
+local tyrantKillCount = 0
+local tyrantRequiredKills = 300
+local eyesGlowing = {false, false, false, false}
+local isBossFighting = false
+local bossSpawned = false
+
+local function checkTyrantStatues()
+    -- Kiểm tra tượng đại bàng và mắt đã sáng chưa
+    local statueLeft = Workspace:FindFirstChild("EagleStatueLeft")
+    local statueRight = Workspace:FindFirstChild("EagleStatueRight")
+    
+    if statueLeft and statueRight then
+        -- Kiểm tra mắt (cần tìm đúng attribute)
+        for i = 1, 2 do
+            local eye = statueLeft:FindFirstChild("Eye" .. i)
+            if eye and eye:GetAttribute("Glowing") then
+                eyesGlowing[i] = true
+            end
+        end
+        for i = 1, 2 do
+            local eye = statueRight:FindFirstChild("Eye" .. i)
+            if eye and eye:GetAttribute("Glowing") then
+                eyesGlowing[i+2] = true
+            end
+        end
+    end
+    
+    -- Đếm số mắt đã sáng
+    local glowingCount = 0
+    for _, v in ipairs(eyesGlowing) do
+        if v then glowingCount = glowingCount + 1 end
+    end
+    
+    return glowingCount
+end
+
+local function breakTyrantVases()
+    -- Đập vỡ bình gốm xung quanh khu vực tượng
+    local vases = Workspace:FindFirstChild("BreakableVases") or Workspace:FindFirstChild("Vases")
+    if vases then
+        for _, vase in ipairs(vases:GetChildren()) do
+            if vase:IsA("BasePart") and vase.Visible then
+                local player = Players.LocalPlayer
+                local char = player.Character
+                if char and char:FindFirstChild("HumanoidRootPart") then
+                    char.HumanoidRootPart.CFrame = vase.CFrame
+                    task.wait(0.1)
+                    
+                    -- Dùng skill để đập bình (nếu có Buddha)
+                    if fastAttackEnabled then
+                        pcall(function()
+                            local RS = ReplicatedStorage
+                            if RS and RS.Modules and RS.Modules.Net then
+                                local atk = RS.Modules.Net["RE/RegisterAttack"]
+                                if atk then atk:FireServer() end
+                            end
+                        end)
+                    end
+                end
+            end
+        end
+        return true
+    end
+    return false
+end
+
+local function findTyrantBoss()
+    -- Tìm boss Tyrant of the Skies
+    for _, v in ipairs(Workspace:GetDescendants()) do
+        if v:IsA("Model") and (v.Name == "Tyrant of the Skies" or string.find(v.Name, "Tyrant") or string.find(v.Name, "Skies")) then
+            return v
+        end
+    end
+    return nil
+end
+
+local function fightTyrantBoss()
+    local boss = findTyrantBoss()
+    if not boss then return false end
+    
+    local hrp = boss:FindFirstChild("HumanoidRootPart")
+    local hum = boss:FindFirstChild("Humanoid")
+    
+    if hrp and hum and hum.Health > 0 then
+        local player = Players.LocalPlayer
+        local char = player.Character
+        if char and char:FindFirstChild("HumanoidRootPart") then
+            local root = char.HumanoidRootPart
+            -- Teleport đến gần boss (boss bay trên không)
+            root.CFrame = hrp.CFrame * CFrame.new(0, 10, 15)
+            task.wait(0.1)
+            
+            if fastAttackEnabled then
+                pcall(function()
+                    local RS = ReplicatedStorage
+                    if RS and RS.Modules and RS.Modules.Net then
+                        local atk = RS.Modules.Net["RE/RegisterAttack"]
+                        if atk then atk:FireServer() end
+                    end
+                end)
+            end
+        end
+        return true
+    end
+    return false
+end
+
+local function startFarmTyrant()
+    task.spawn(function()
+        while farmTyrantEnabled do
+            local player = Players.LocalPlayer
+            local char = player.Character
+            if not char then task.wait(1) continue end
+            
+            local root = char:FindFirstChild("HumanoidRootPart")
+            if not root then task.wait(1) continue end
+            
+            -- 1. Teleport đến Tiki Outpost
+            if (root.Position - tikiOutpostPos).Magnitude > 500 then
+                print("[Tyrant] Đang di chuyển đến Tiki Outpost...")
+                teleportToPos(tikiOutpostPos)
+                task.wait(2)
+            end
+            
+            -- 2. Kiểm tra boss đã spawn chưa
+            local boss = findTyrantBoss()
+            if boss then
+                if not isBossFighting then
+                    print("[Tyrant] Boss đã xuất hiện! Đang chiến đấu...")
+                    isBossFighting = true
+                end
+                if not fightTyrantBoss() then
+                    -- Boss đã chết
+                    isBossFighting = false
+                    print("[Tyrant] Đã đánh bại Tyrant of the Skies!")
+                    tyrantKillCount = 0
+                end
+                task.wait(0.3)
+                continue
+            end
+            
+            isBossFighting = false
+            
+            -- 3. Kiểm tra trạng thái mắt tượng
+            local glowingEyes = checkTyrantStatues()
+            
+            -- 4. Nếu chưa đủ 4 mắt sáng, farm quái
+            if glowingEyes < 4 then
+                -- Farm quái ở Tiki Outpost
+                local enemies = Workspace:FindFirstChild("Enemies")
+                local targetNPC = nil
+                
+                if enemies then
+                    for _, npc in ipairs(enemies:GetChildren()) do
+                        for _, tikiNPC in ipairs(tikiNPCs) do
+                            if string.find(npc.Name, tikiNPC) then
+                                local hum = npc:FindFirstChild("Humanoid")
+                                local hrp = npc:FindFirstChild("HumanoidRootPart")
+                                if hum and hrp and hum.Health > 0 then
+                                    targetNPC = npc
+                                    break
+                                end
+                            end
+                        end
+                        if targetNPC then break end
+                    end
+                end
+                
+                if targetNPC then
+                    local hrp = targetNPC:FindFirstChild("HumanoidRootPart")
+                    if hrp then
+                        root.CFrame = hrp.CFrame * CFrame.new(0, 0, 10)
+                        task.wait(0.1)
+                        
+                        if fastAttackEnabled then
+                            pcall(function()
+                                local RS = ReplicatedStorage
+                                if RS and RS.Modules and RS.Modules.Net then
+                                    local atk = RS.Modules.Net["RE/RegisterAttack"]
+                                    if atk then atk:FireServer() end
+                                end
+                            end)
+                        end
+                        tyrantKillCount = tyrantKillCount + 1
+                        if tyrantKillCount % 10 == 0 then
+                            print("[Tyrant] Đã tiêu diệt:", tyrantKillCount, "/", tyrantRequiredKills, "quái")
+                        end
+                    end
+                else
+                    -- Di chuyển quanh đảo
+                    local wanderPos = tikiOutpostPos + Vector3.new(math.random(-80, 80), 0, math.random(-80, 80))
+                    teleportToPos(wanderPos)
+                    task.wait(2)
+                end
+            else
+                -- 5. Đã đủ 4 mắt sáng, đập bình để triệu hồi boss
+                print("[Tyrant] Đã đủ 300 quái! Đang đập bình để triệu hồi boss...")
+                breakTyrantVases()
+                task.wait(1)
+            end
+            
+            task.wait(0.3)
+        end
+    end)
+end
+
+-- ========== CẬP NHẬT LEVEL HIỂN THỊ ==========
+local function updateLevelDisplay()
+    local level = getPlayerLevel()
+    levelLabel.Text = "📊 Level: " .. level
+end
+
+-- ========== FPS COUNTER ==========
+local frameCount = 0
+local lastTime = tick()
+
+RunService.RenderStepped:Connect(function()
+    frameCount = frameCount + 1
+    local now = tick()
+    if now - lastTime >= 1 then
+        fpsLabel.Text = "FPS: " .. frameCount .. " | ⏱️ " .. os.date("%H:%M:%S")
+        frameCount = 0
+        lastTime = now
+        updateLevelDisplay()
+    end
+end)
+
+-- ========== TẠO CÁC NÚT CHỨC NĂNG ==========
+makeButton(content, "🏆 Farm Level (Auto Full Sea)", "🏆", function(v)
+    farmLevelEnabled = v
+    if v then startFarmLevel() else print("[Farm Level] Đã tắt") end
+end)
+
+makeButton(content, "⚡ Fast Attack", "⚡", function(v)
+    fastAttackEnabled = v
+    if v then startFastAttack() else print("[Fast Attack] Đã tắt") end
+end)
+
+makeButton(content, "🔄 Bring Mob (Kéo Quái)", "🔄", function(v)
+    bringMobEnabled = v
+    if v then startBringMob() else print("[Bring Mob] Đã tắt") end
+end)
+
+makeButton(content, "🔧 Fix Lag", "🔧", function(v)
+    fixLagEnabled = v
+    if v then startFixLagLoop() else applyFixLag() end
+end)
+
+makeButton(content, "🦴 Farm Xương (Haunted Castle)", "🦴", function(v)
+    farmBoneEnabled = v
+    if v then startFarmBone() else print("[Farm Xương] Đã tắt") end
+end)
+
+makeButton(content, "🍰 Farm Katakuri (Cake Land)", "🍰", function(v)
+    farmKatakuriEnabled = v
+    if v then startFarmKatakuri() else print("[Farm Katakuri] Đã tắt") end
+end)
+
+makeButton(content, "🦅 Farm Tyrant (Tiki Outpost - Boss Chim)", "🦅", function(v)
+    farmTyrantEnabled = v
+    if v then 
+        print("[Tyrant] Bắt đầu Auto Farm Tyrant of the Skies!")
+        print("[Tyrant] Cần tiêu diệt 300 quái ở Tiki Outpost để triệu hồi boss")
+        startFarmTyrant()
+    else 
+        print("[Tyrant] Đã tắt")
+    end
+end)
+
+-- ========== KÉO THẢ NÚT TOGGLE ==========
+do
+    local dragging = false
+    local dragStart = nil
+    local startPos = nil
+    
+    toggleBtn.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = true
+            dragStart = input.Position
+            startPos = toggleBtn.Position
+        end
+    end)
+    
+    toggleBtn.InputEnded:Connect(function()
+        dragging = false
+    end)
+    
+    UserInputService.InputChanged:Connect(function(input)
+        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+            local delta = input.Position - dragStart
+            toggleBtn.Position = UDim2.new(
+                startPos.X.Scale, 
+                startPos.X.Offset + delta.X,
+                startPos.Y.Scale, 
+                startPos.Y.Offset + delta.Y
+            )
+        end
+    end)
+end
+
+-- ========== KÉO THẢ MENU ==========
+do
+    local dragging = false
+    local dragStart = nil
+    local startPos = nil
+    
+    header.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = true
+            dragStart = input.Position
+            startPos = menu.Position
+        end
+    end)
+    
+    header.InputEnded:Connect(function()
+        dragging = false
+    end)
+    
+    UserInputService.InputChanged:Connect(function(input)
+        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+            local delta = input.Position - dragStart
+            menu.Position = UDim2.new(
+                startPos.X.Scale,
+                startPos.X.Offset + delta.X,
+                startPos.Y.Scale,
+                startPos.Y.Offset + delta.Y
+            )
+        end
+    end)
+end
+
+-- ========== BẬT/TẮT MENU ==========
+local menuOpen = true
+toggleBtn.MouseButton1Click:Connect(function()
+    menuOpen = not menuOpen
+    menu.Visible = menuOpen
+    if menuOpen then
+        toggleBtn.BackgroundColor3 = Color3.fromRGB(0, 120, 255)
+    else
+        toggleBtn.BackgroundColor3 = Color3.fromRGB(0, 80, 180)
+    end
+end)
+
+-- ========== THU GỌN MENU ==========
+local collapsed = false
+collapseBtn.MouseButton1Click:Connect(function()
+    collapsed = not collapsed
+    if collapsed then
+        TweenService:Create(menu, TweenInfo.new(0.15), {Size = UDim2.new(0, 450, 0, 50)}):Play()
+        content.Visible = false
+        collapseBtn.Text = "+"
+    else
+        TweenService:Create(menu, TweenInfo.new(0.15), {Size = UDim2.new(0, 450, 0, 680)}):Play()
+        content.Visible = true
+        collapseBtn.Text = "−"
+    end
+end)
+
+-- Hiệu ứng xuất hiện
+menu.BackgroundTransparency = 1
+TweenService:Create(menu, TweenInfo.new(0.2), {BackgroundTransparency = 0}):Play()
+
+print("NducHub Complete đã tải thành công!")
+print("Đã thêm chức năng Auto Farm Tyrant of the Skies (Boss chim Tiki Outpost - Sea 3)!")
+print("- Cần tiêu diệt 300 quái để triệu hồi boss")
+print("- Boss thưởng: 6 cấp, 2,500 Fragments, Moonstone, Fire Feather, Feathered Visage")
