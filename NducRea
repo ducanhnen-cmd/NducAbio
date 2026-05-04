@@ -1,0 +1,923 @@
+local library = loadstring(game:HttpGet("https://raw.githubusercontent.com/liebertsx/Tora-Library/main/src/librarynew",true))()
+local tab = library:CreateWindow("NducHub - One Tap Hub")
+
+-- SERVICES
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local Workspace = game:GetService("Workspace")
+local Camera = Workspace.CurrentCamera
+local LocalPlayer = Players.LocalPlayer
+local playerGui = LocalPlayer:WaitForChild("PlayerGui")
+
+-- VARIABLES
+local AimbotEnabled = false
+local aimbotFov = 150
+local aimbotSmooth = 0.05
+local aimbotMaxDist = 100
+local aimIgnoreTeam = true
+local autoAimEnabled = false
+local aimColor = Color3.fromRGB(255, 60, 60)
+
+local HitboxEnabled = false
+local HitboxSize = 5
+local HitboxObjects = {}
+
+local ESPEnabled = false
+local ESPObjects = {}
+local ESP_MAX_DISTANCE = 300
+local showNames = false
+local showHealth = false
+local showBox = false
+local showBoxESP = false
+local showLines = true
+local showFovCircle = true
+local espIgnoreTeam = true
+local showDistance = false
+local espColor = Color3.fromHSV(0.75, 1, 0.9)
+
+local FlyEnabled = false
+local FlySpeed = 50
+local FlyConnection
+local FlyBodyVelocity
+local FlyBodyGyro
+
+-- Mobile Fly
+local TouchUp = false
+local TouchDown = false
+local FlyScreenGui = nil
+
+-- ==================== FOV CIRCLE AIMBOT ====================
+local fovGui = Instance.new("ScreenGui")
+fovGui.Name = "AimbotFovGui"
+fovGui.ResetOnSpawn = false
+fovGui.IgnoreGuiInset = true
+fovGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+fovGui.Parent = playerGui
+
+local fovCircle = Instance.new("Frame")
+fovCircle.Name = "FovCircle"
+fovCircle.AnchorPoint = Vector2.new(0.5, 0.5)
+fovCircle.BackgroundTransparency = 1
+fovCircle.BorderSizePixel = 0
+fovCircle.Size = UDim2.new(0, aimbotFov * 2, 0, aimbotFov * 2)
+fovCircle.Visible = false
+fovCircle.ZIndex = 100
+fovCircle.Parent = fovGui
+
+Instance.new("UICorner", fovCircle).CornerRadius = UDim.new(1, 0)
+
+local fovStroke = Instance.new("UIStroke")
+fovStroke.Color = aimColor
+fovStroke.Thickness = 1.5
+fovStroke.Transparency = 0.2
+fovStroke.Parent = fovCircle
+
+-- ==================== ESP FUNCTIONS ====================
+local function removeESP(plr)
+	local d = ESPObjects[plr]
+	if not d then return end
+	if d.bill and d.bill.Parent then d.bill:Destroy() end
+	if d.highlight and d.highlight.Parent then d.highlight:Destroy() end
+	if d.lineEsp then
+		for _, line in pairs(d.lineEsp) do
+			if line and line.Parent then line:Destroy() end
+		end
+	end
+	if d.tracerBeam and d.tracerBeam.Parent then d.tracerBeam:Destroy() end
+	if d.tracerAttachment0 and d.tracerAttachment0.Parent then d.tracerAttachment0:Destroy() end
+	if d.tracerAttachment1 and d.tracerAttachment1.Parent then d.tracerAttachment1:Destroy() end
+	if d.fovCircleGui and d.fovCircleGui.Parent then d.fovCircleGui:Destroy() end
+	ESPObjects[plr] = nil
+end
+
+local function createESP(plr)
+	if plr == LocalPlayer then return end
+	if espIgnoreTeam and plr.Team and LocalPlayer.Team and plr.Team == LocalPlayer.Team then return end
+	
+	removeESP(plr)
+	local char = plr.Character
+	if not char then return end
+	local head = char:FindFirstChild("Head")
+	local hrp = char:FindFirstChild("HumanoidRootPart")
+	local hum = char:FindFirstChildOfClass("Humanoid")
+	if not head or not hrp or not hum then return end
+	
+	local bill = Instance.new("BillboardGui")
+	bill.Name = "ESP_Bill"
+	bill.Adornee = hrp
+	bill.AlwaysOnTop = true
+	bill.Size = UDim2.new(0, 130, 0, 60)
+	bill.StudsOffset = Vector3.new(0, 3.2, 0)
+	bill.ResetOnSpawn = false
+	bill.Parent = playerGui
+	
+	local nameLabel = Instance.new("TextLabel")
+	nameLabel.Size = UDim2.new(1, 0, 0.5, 0)
+	nameLabel.BackgroundTransparency = 1
+	nameLabel.Text = plr.DisplayName
+	nameLabel.TextColor3 = espColor
+	nameLabel.Font = Enum.Font.GothamBold
+	nameLabel.TextSize = 13
+	nameLabel.TextStrokeTransparency = 0.4
+	nameLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+	nameLabel.Visible = showNames
+	nameLabel.Parent = bill
+	
+	local healthBg = Instance.new("Frame")
+	healthBg.Size = UDim2.new(0.8, 0, 0, 4)
+	healthBg.Position = UDim2.new(0.1, 0, 0.55, 0)
+	healthBg.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+	healthBg.BorderSizePixel = 0
+	Instance.new("UICorner", healthBg).CornerRadius = UDim.new(1, 0)
+	healthBg.Visible = showHealth
+	healthBg.Parent = bill
+	
+	local healthBar = Instance.new("Frame")
+	healthBar.Size = UDim2.new(hum.Health / math.max(hum.MaxHealth, 1), 0, 1, 0)
+	healthBar.BackgroundColor3 = Color3.fromRGB(80, 220, 80)
+	healthBar.BorderSizePixel = 0
+	Instance.new("UICorner", healthBar).CornerRadius = UDim.new(1, 0)
+	healthBar.Parent = healthBg
+	
+	local distLabel = Instance.new("TextLabel")
+	distLabel.Size = UDim2.new(1, 0, 0.35, 0)
+	distLabel.Position = UDim2.new(0, 0, 0.65, 0)
+	distLabel.BackgroundTransparency = 1
+	distLabel.Text = ""
+	distLabel.TextColor3 = Color3.fromRGB(180, 180, 180)
+	distLabel.Font = Enum.Font.Code
+	distLabel.TextSize = 10
+	distLabel.TextStrokeTransparency = 0.5
+	distLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+	distLabel.Visible = showDistance
+	distLabel.Parent = bill
+	
+	local highlight = Instance.new("Highlight")
+	highlight.Name = "ESP_Highlight"
+	highlight.Adornee = char
+	highlight.FillColor = espColor
+	highlight.FillTransparency = 0.82
+	highlight.OutlineColor = espColor
+	highlight.OutlineTransparency = 0
+	highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+	highlight.Enabled = showBox and ESPEnabled
+	highlight.Parent = char
+	
+	local lineEsp = {}
+	local boxSize = Vector3.new(4.5, 6.5, 4.5)
+	local function createLine(name, cframe, length)
+		local line = Instance.new("LineHandleAdornment")
+		line.Name = name
+		line.Adornee = hrp
+		line.AlwaysOnTop = true
+		line.ZIndex = 5
+		line.Thickness = 2
+		line.Color3 = espColor
+		line.Transparency = 0
+		line.Visible = showBoxESP and ESPEnabled
+		line.Length = length
+		line.CFrame = cframe
+		line.Parent = Workspace
+		return line
+	end
+	
+	local halfSize = boxSize / 2
+	lineEsp.bottom1 = createLine("Line_Bottom1", CFrame.new(0, -halfSize.Y, 0) * CFrame.Angles(0, 0, math.rad(90)), boxSize.X)
+	lineEsp.bottom2 = createLine("Line_Bottom2", CFrame.new(0, -halfSize.Y, 0) * CFrame.Angles(0, math.rad(90), 0), boxSize.Z)
+	lineEsp.bottom3 = createLine("Line_Bottom3", CFrame.new(-halfSize.X, -halfSize.Y, halfSize.Z) * CFrame.Angles(0, 0, math.rad(90)), boxSize.X)
+	lineEsp.bottom4 = createLine("Line_Bottom4", CFrame.new(halfSize.X, -halfSize.Y, 0) * CFrame.Angles(0, math.rad(90), 0), boxSize.Z)
+	lineEsp.top1 = createLine("Line_Top1", CFrame.new(0, halfSize.Y, 0) * CFrame.Angles(0, 0, math.rad(90)), boxSize.X)
+	lineEsp.top2 = createLine("Line_Top2", CFrame.new(0, halfSize.Y, 0) * CFrame.Angles(0, math.rad(90), 0), boxSize.Z)
+	lineEsp.top3 = createLine("Line_Top3", CFrame.new(-halfSize.X, halfSize.Y, halfSize.Z) * CFrame.Angles(0, 0, math.rad(90)), boxSize.X)
+	lineEsp.top4 = createLine("Line_Top4", CFrame.new(halfSize.X, halfSize.Y, 0) * CFrame.Angles(0, math.rad(90), 0), boxSize.Z)
+	lineEsp.vert1 = createLine("Line_Vert1", CFrame.new(-halfSize.X, 0, -halfSize.Z), boxSize.Y)
+	lineEsp.vert2 = createLine("Line_Vert2", CFrame.new(halfSize.X, 0, -halfSize.Z), boxSize.Y)
+	lineEsp.vert3 = createLine("Line_Vert3", CFrame.new(-halfSize.X, 0, halfSize.Z), boxSize.Y)
+	lineEsp.vert4 = createLine("Line_Vert4", CFrame.new(halfSize.X, 0, halfSize.Z), boxSize.Y)
+	
+	local tracerAttachment0 = Instance.new("Attachment")
+	tracerAttachment0.Name = "TracerAttachment0"
+	tracerAttachment0.Parent = hrp
+	tracerAttachment0.Position = Vector3.new(0, 0, 0)
+	
+	local tracerAttachment1 = Instance.new("Attachment")
+	tracerAttachment1.Name = "TracerAttachment1"
+	tracerAttachment1.Parent = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") or hrp
+	tracerAttachment1.Position = Vector3.new(0, 0, 0)
+	
+	local tracerBeam = Instance.new("Beam")
+	tracerBeam.Name = "TracerBeam"
+	tracerBeam.Attachment0 = tracerAttachment0
+	tracerBeam.Attachment1 = tracerAttachment1
+	tracerBeam.Color = ColorSequence.new(espColor)
+	tracerBeam.Width0 = 0.15
+	tracerBeam.Width1 = 0.15
+	tracerBeam.FaceCamera = true
+	tracerBeam.Segments = 1
+	tracerBeam.ZOffset = 0
+	tracerBeam.Transparency = NumberSequence.new(0.3)
+	tracerBeam.Enabled = showLines and ESPEnabled
+	tracerBeam.Parent = hrp
+	
+	local fovCircleFrame = Instance.new("Frame")
+	fovCircleFrame.Name = "FOV_Circle_" .. plr.Name
+	fovCircleFrame.Size = UDim2.new(0, 60, 0, 60)
+	fovCircleFrame.BackgroundTransparency = 1
+	fovCircleFrame.BorderSizePixel = 0
+	fovCircleFrame.Visible = false
+	fovCircleFrame.ZIndex = 100
+	fovCircleFrame.Parent = fovGui
+	
+	local fovCircleStroke = Instance.new("UIStroke")
+	fovCircleStroke.Color = espColor
+	fovCircleStroke.Thickness = 2
+	fovCircleStroke.Transparency = 0.3
+	fovCircleStroke.Parent = fovCircleFrame
+	
+	local fovCorner = Instance.new("UICorner")
+	fovCorner.CornerRadius = UDim.new(1, 0)
+	fovCorner.Parent = fovCircleFrame
+	
+	ESPObjects[plr] = {
+		bill = bill,
+		nameLabel = nameLabel,
+		healthBar = healthBar,
+		healthBg = healthBg,
+		distLabel = distLabel,
+		highlight = highlight,
+		lineEsp = lineEsp,
+		tracerAttachment0 = tracerAttachment0,
+		tracerAttachment1 = tracerAttachment1,
+		tracerBeam = tracerBeam,
+		fovCircleGui = fovCircleFrame,
+		fovCircleFrame = fovCircleFrame,
+		fovCircleStroke = fovCircleStroke,
+		hrp = hrp,
+		hum = hum,
+		char = char,
+	}
+end
+
+local function refreshAllESP()
+	for plr in pairs(ESPObjects) do removeESP(plr) end
+	if not ESPEnabled then return end
+	for _, plr in ipairs(Players:GetPlayers()) do
+		if plr ~= LocalPlayer then
+			if espIgnoreTeam and plr.Team and LocalPlayer.Team and plr.Team == LocalPlayer.Team then
+				continue
+			end
+			createESP(plr)
+		end
+	end
+end
+
+-- ==================== HITBOX ====================
+local function CreateHitbox(player)
+	if player == LocalPlayer then return end
+	
+	local function setupHitbox(character)
+		if not character then return end
+		
+		if HitboxObjects[player] then
+			for _, obj in pairs(HitboxObjects[player]) do
+				if obj then obj:Destroy() end
+			end
+		end
+		HitboxObjects[player] = {}
+		
+		local head = character:WaitForChild("Head", 5)
+		if head then
+			local hitbox = Instance.new("Part")
+			hitbox.Name = "HitboxExpander_Head"
+			hitbox.Transparency = 0.5
+			hitbox.BrickColor = BrickColor.new("Bright red")
+			hitbox.Material = Enum.Material.Neon
+			hitbox.CanCollide = false
+			hitbox.CanQuery = false
+			hitbox.Size = Vector3.new(HitboxSize, HitboxSize, HitboxSize)
+			hitbox.Massless = true
+			hitbox.Parent = character
+			
+			local weld = Instance.new("WeldConstraint")
+			weld.Part0 = hitbox
+			weld.Part1 = head
+			weld.Parent = hitbox
+			HitboxObjects[player].HeadHitbox = hitbox
+		end
+		
+		local hrp = character:WaitForChild("HumanoidRootPart", 5)
+		if hrp then
+			local bodyHitbox = Instance.new("Part")
+			bodyHitbox.Name = "HitboxExpander_Body"
+			bodyHitbox.Transparency = 0.5
+			bodyHitbox.BrickColor = BrickColor.new("Bright red")
+			bodyHitbox.Material = Enum.Material.Neon
+			bodyHitbox.CanCollide = false
+			bodyHitbox.CanQuery = false
+			bodyHitbox.Size = Vector3.new(HitboxSize, HitboxSize * 1.5, HitboxSize)
+			bodyHitbox.Massless = true
+			bodyHitbox.Parent = character
+			
+			local weld = Instance.new("WeldConstraint")
+			weld.Part0 = bodyHitbox
+			weld.Part1 = hrp
+			weld.Parent = bodyHitbox
+			HitboxObjects[player].BodyHitbox = bodyHitbox
+		end
+	end
+	
+	if player.Character then
+		setupHitbox(player.Character)
+	end
+	
+	player.CharacterAdded:Connect(function(character)
+		if HitboxEnabled then
+			task.wait(0.3)
+			setupHitbox(character)
+		end
+	end)
+end
+
+local function ToggleHitbox(state)
+	HitboxEnabled = state
+	if state then
+		for _, player in pairs(Players:GetPlayers()) do
+			if player ~= LocalPlayer then
+				CreateHitbox(player)
+			end
+		end
+	else
+		for player, objects in pairs(HitboxObjects) do
+			for _, obj in pairs(objects) do
+				if obj then obj:Destroy() end
+			end
+		end
+		HitboxObjects = {}
+	end
+end
+
+-- ==================== FLY ====================
+local function CreateFlyButtons()
+	if FlyScreenGui then FlyScreenGui:Destroy() end
+	
+	FlyScreenGui = Instance.new("ScreenGui")
+	FlyScreenGui.Name = "FlyButtons"
+	FlyScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+	
+	local upBtn = Instance.new("TextButton")
+	upBtn.Size = UDim2.new(0, 70, 0, 70)
+	upBtn.Position = UDim2.new(0.85, 0, 0.45, -80)
+	upBtn.Text = "⬆"
+	upBtn.FontSize = Enum.FontSize.Size28
+	upBtn.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
+	upBtn.BackgroundTransparency = 0.4
+	upBtn.Parent = FlyScreenGui
+	
+	upBtn.MouseButton1Down:Connect(function() TouchUp = true end)
+	upBtn.MouseButton1Up:Connect(function() TouchUp = false end)
+	
+	local downBtn = Instance.new("TextButton")
+	downBtn.Size = UDim2.new(0, 70, 0, 70)
+	downBtn.Position = UDim2.new(0.85, 0, 0.45, 10)
+	downBtn.Text = "⬇"
+	downBtn.FontSize = Enum.FontSize.Size28
+	downBtn.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
+	downBtn.BackgroundTransparency = 0.4
+	downBtn.Parent = FlyScreenGui
+	
+	downBtn.MouseButton1Down:Connect(function() TouchDown = true end)
+	downBtn.MouseButton1Up:Connect(function() TouchDown = false end)
+end
+
+local function RemoveFlyButtons()
+	if FlyScreenGui then FlyScreenGui:Destroy() end
+	FlyScreenGui = nil
+end
+
+local function StartFly()
+	local character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+	local humanoid = character:WaitForChild("Humanoid")
+	local rootPart = character:WaitForChild("HumanoidRootPart")
+	
+	FlyBodyVelocity = Instance.new("BodyVelocity")
+	FlyBodyVelocity.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+	FlyBodyVelocity.Velocity = Vector3.zero
+	FlyBodyVelocity.Parent = rootPart
+	
+	FlyBodyGyro = Instance.new("BodyGyro")
+	FlyBodyGyro.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
+	FlyBodyGyro.CFrame = Camera.CFrame
+	FlyBodyGyro.Parent = rootPart
+	
+	humanoid.PlatformStand = true
+	
+	if UserInputService.TouchEnabled then
+		CreateFlyButtons()
+	end
+	
+	FlyConnection = RunService.RenderStepped:Connect(function()
+		if not FlyEnabled then return end
+		if not character or not character.Parent then return end
+		if not FlyBodyVelocity or not FlyBodyVelocity.Parent then return end
+		
+		local camCF = Camera.CFrame
+		local moveDir = Vector3.zero
+		
+		if UserInputService:IsKeyDown(Enum.KeyCode.W) then
+			moveDir = moveDir + camCF.LookVector
+		end
+		if UserInputService:IsKeyDown(Enum.KeyCode.S) then
+			moveDir = moveDir - camCF.LookVector
+		end
+		if UserInputService:IsKeyDown(Enum.KeyCode.A) then
+			moveDir = moveDir - camCF.RightVector
+		end
+		if UserInputService:IsKeyDown(Enum.KeyCode.D) then
+			moveDir = moveDir + camCF.RightVector
+		end
+		if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
+			moveDir = moveDir + Vector3.new(0, 1, 0)
+		end
+		if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
+			moveDir = moveDir - Vector3.new(0, 1, 0)
+		end
+		
+		if UserInputService.TouchEnabled and humanoid then
+			local moveVec = humanoid.MoveDirection
+			if moveVec.Magnitude > 0 then
+				moveDir = moveDir + camCF.LookVector * moveVec.Z
+				moveDir = moveDir + camCF.RightVector * moveVec.X
+			end
+			if TouchUp then
+				moveDir = moveDir + camCF.LookVector
+			end
+			if TouchDown then
+				moveDir = moveDir - camCF.LookVector
+			end
+		end
+		
+		if moveDir.Magnitude > 0 then
+			FlyBodyVelocity.Velocity = moveDir.Unit * FlySpeed
+		else
+			FlyBodyVelocity.Velocity = Vector3.zero
+		end
+		
+		FlyBodyGyro.CFrame = CFrame.new(rootPart.Position, rootPart.Position + camCF.LookVector)
+	end)
+end
+
+local function StopFly()
+	if FlyConnection then FlyConnection:Disconnect(); FlyConnection = nil end
+	if FlyBodyVelocity then FlyBodyVelocity:Destroy(); FlyBodyVelocity = nil end
+	if FlyBodyGyro then FlyBodyGyro:Destroy(); FlyBodyGyro = nil end
+	
+	RemoveFlyButtons()
+	TouchUp = false
+	TouchDown = false
+	
+	local character = LocalPlayer.Character
+	if character then
+		local humanoid = character:FindFirstChild("Humanoid")
+		if humanoid then humanoid.PlatformStand = false end
+	end
+end
+
+-- ==================== PLAYER EVENTS ====================
+Players.PlayerAdded:Connect(function(player)
+	if ESPEnabled then createESP(player) end
+	if HitboxEnabled then CreateHitbox(player) end
+	
+	player.CharacterAdded:Connect(function()
+		task.wait(1)
+		if ESPEnabled then
+			if espIgnoreTeam and player.Team and LocalPlayer.Team and player.Team == LocalPlayer.Team then
+				return
+			end
+			createESP(player)
+		end
+	end)
+end)
+
+Players.PlayerRemoving:Connect(function(player)
+	removeESP(player)
+	if HitboxObjects[player] then
+		for _, obj in pairs(HitboxObjects[player]) do
+			if obj then obj:Destroy() end
+		end
+		HitboxObjects[player] = nil
+	end
+end)
+
+-- ==================== MAIN LOOP ====================
+RunService.RenderStepped:Connect(function()
+	local localChar = LocalPlayer.Character
+	local localHrp = localChar and localChar:FindFirstChild("HumanoidRootPart")
+	
+	-- FOV Circle
+	if AimbotEnabled then
+		local mouse = UserInputService:GetMouseLocation()
+		fovCircle.Position = UDim2.new(0, mouse.X, 0, mouse.Y)
+		fovCircle.Size = UDim2.new(0, aimbotFov * 2, 0, aimbotFov * 2)
+		fovStroke.Color = aimColor
+		fovCircle.Visible = true
+	else
+		fovCircle.Visible = false
+	end
+	
+	-- ESP Update
+	for plr, data in pairs(ESPObjects) do
+		if not plr.Character or not data.hrp or not data.hrp.Parent or not data.char or not data.char.Parent then
+			removeESP(plr)
+			continue
+		end
+		
+		local withinRange = true
+		if localHrp and data.hrp then
+			local d3 = (data.hrp.Position - localHrp.Position).Magnitude
+			if d3 > ESP_MAX_DISTANCE then withinRange = false end
+		end
+		
+		data.nameLabel.Visible = showNames and ESPEnabled and withinRange
+		data.healthBg.Visible = showHealth and ESPEnabled and withinRange
+		data.distLabel.Visible = showDistance and ESPEnabled and withinRange
+		
+		if data.highlight and data.highlight.Parent then
+			data.highlight.Enabled = showBox and ESPEnabled and withinRange
+			data.highlight.FillColor = espColor
+			data.highlight.OutlineColor = espColor
+		end
+		
+		if data.lineEsp then
+			for _, line in pairs(data.lineEsp) do
+				if line and line.Parent then
+					line.Visible = showBoxESP and ESPEnabled
+					line.Color3 = espColor
+				end
+			end
+		end
+		
+		if data.tracerBeam and data.tracerBeam.Parent then
+			data.tracerBeam.Enabled = showLines and ESPEnabled and withinRange
+			data.tracerBeam.Color = ColorSequence.new(espColor)
+			if localHrp and data.tracerAttachment1 then
+				data.tracerAttachment1.Parent = localHrp
+			end
+		end
+		
+		if data.fovCircleGui and data.fovCircleGui.Parent then
+			local head = plr.Character and plr.Character:FindFirstChild("Head")
+			if head then
+				local screenPos, onScreen = Camera:WorldToViewportPoint(head.Position)
+				if onScreen and withinRange then
+					local mousePos = UserInputService:GetMouseLocation()
+					local screenVec = Vector2.new(screenPos.X, screenPos.Y)
+					local dist2d = (screenVec - mousePos).Magnitude
+					local inFov = dist2d <= aimbotFov
+					data.fovCircleGui.Visible = showFovCircle and ESPEnabled and inFov
+					if data.fovCircleGui.Visible then
+						local circleSize = 60
+						if localHrp and data.hrp then
+							local worldDist = (data.hrp.Position - localHrp.Position).Magnitude
+							local scale = math.clamp(200 / worldDist, 0.3, 1.5)
+							circleSize = 60 * scale
+						end
+						data.fovCircleGui.Size = UDim2.new(0, circleSize, 0, circleSize)
+						data.fovCircleGui.Position = UDim2.new(0, screenPos.X - circleSize/2, 0, screenPos.Y - circleSize/2)
+						if data.fovCircleStroke then
+							data.fovCircleStroke.Color = espColor
+						end
+					end
+				else
+					data.fovCircleGui.Visible = false
+				end
+			end
+		end
+		
+		if not ESPEnabled then continue end
+		data.nameLabel.Text = plr.DisplayName
+		data.nameLabel.TextColor3 = espColor
+		
+		local hum = data.hum
+		if hum and hum.Parent then
+			local pct = math.clamp(hum.Health / math.max(hum.MaxHealth, 1), 0, 1)
+			data.healthBar.Size = UDim2.new(pct, 0, 1, 0)
+		end
+		
+		if localHrp then
+			local dist = math.floor((data.hrp.Position - localHrp.Position).Magnitude)
+			data.distLabel.Text = dist .. " studs"
+		end
+	end
+	
+	-- Aimbot
+	if not AimbotEnabled then return end
+	local rmbHeld = UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2)
+	if not rmbHeld and not autoAimEnabled then return end
+	
+	local mousePos = UserInputService:GetMouseLocation()
+	local bestPlayer = nil
+	local bestDist = math.huge
+	
+	for _, plr in ipairs(Players:GetPlayers()) do
+		if plr == LocalPlayer then continue end
+		if aimIgnoreTeam and plr.Team and LocalPlayer.Team and plr.Team == LocalPlayer.Team then continue end
+		
+		local char = plr.Character
+		if not char then continue end
+		local head = char:FindFirstChild("Head")
+		local hum = char:FindFirstChildOfClass("Humanoid")
+		if not head or not hum or hum.Health <= 0 then continue end
+		
+		local hrp = char:FindFirstChild("HumanoidRootPart")
+		local worldDist = (hrp and localHrp) and (hrp.Position - localHrp.Position).Magnitude or math.huge
+		if worldDist > aimbotMaxDist then continue end
+		
+		local screenPos, onScreen = Camera:WorldToViewportPoint(head.Position)
+		local dist2d
+		if onScreen then
+			local screenVec = Vector2.new(screenPos.X, screenPos.Y)
+			dist2d = (screenVec - mousePos).Magnitude
+		elseif autoAimEnabled then
+			dist2d = aimbotFov
+		else
+			continue
+		end
+		
+		if dist2d < aimbotFov and worldDist < bestDist then
+			bestDist = worldDist
+			bestPlayer = plr
+		end
+	end
+	
+	if not bestPlayer then return end
+	local char = bestPlayer.Character
+	if not char then return end
+	local head = char:FindFirstChild("Head")
+	if not head then return end
+	
+	local screenPos, onScreen = Camera:WorldToViewportPoint(head.Position)
+	if not onScreen and autoAimEnabled then
+		screenPos = Camera:WorldToViewportPoint(head.Position)
+	end
+	
+	local current = UserInputService:GetMouseLocation()
+	local goal = Vector2.new(screenPos.X, screenPos.Y)
+	local lerpAlpha = 1 - (math.clamp(aimbotSmooth, 0, 0.9) * 0.9)
+	local delta = (goal - current) * lerpAlpha
+	mousemoverel(delta.X, delta.Y)
+end)
+
+-- ==================== UI ====================
+-- Tab AimBot
+local aimbotFolder = tab:AddFolder("🎯 AimBot")
+
+aimbotFolder:AddToggle({
+	text = "Enable AimBot",
+	flag = "aimbot_toggle",
+	callback = function(v)
+		AimbotEnabled = v
+	end
+})
+
+aimbotFolder:AddSlider({
+	text = "FOV Radius",
+	min = 30,
+	max = 500,
+	def = 150,
+	callback = function(v)
+		aimbotFov = v
+	end
+})
+
+aimbotFolder:AddSlider({
+	text = "Smoothness",
+	min = 0,
+	max = 100,
+	def = 5,
+	callback = function(v)
+		aimbotSmooth = v / 100
+	end
+})
+
+aimbotFolder:AddSlider({
+	text = "Max Distance",
+	min = 10,
+	max = 500,
+	def = 100,
+	callback = function(v)
+		aimbotMaxDist = v
+	end
+})
+
+aimbotFolder:AddToggle({
+	text = "Ignore Team",
+	flag = "aimbot_ignore_team",
+	callback = function(v)
+		aimIgnoreTeam = v
+	end
+})
+
+aimbotFolder:AddToggle({
+	text = "Auto Aim 360° (No RMB)",
+	flag = "auto_aim",
+	callback = function(v)
+		autoAimEnabled = v
+	end
+})
+
+aimbotFolder:AddLabel({text = "PC: Giữ RMB để ghim | Auto AIM: Tự động"})
+
+aimbotFolder:AddToggle({
+	text = "Enable Hitbox (Đỏ)",
+	flag = "hitbox_toggle",
+	callback = function(v)
+		ToggleHitbox(v)
+	end
+})
+
+aimbotFolder:AddSlider({
+	text = "Hitbox Size",
+	min = 2,
+	max = 15,
+	def = 5,
+	callback = function(v)
+		HitboxSize = v
+		if HitboxEnabled then
+			ToggleHitbox(false)
+			ToggleHitbox(true)
+		end
+	end
+})
+
+-- Tab ESP
+local espFolder = tab:AddFolder("👁 ESP Player")
+
+espFolder:AddToggle({
+	text = "Enable ESP",
+	flag = "esp_toggle",
+	callback = function(v)
+		ESPEnabled = v
+		if v then
+			refreshAllESP()
+		else
+			for plr in pairs(ESPObjects) do removeESP(plr) end
+		end
+	end
+})
+
+espFolder:AddToggle({
+	text = "Box ESP (Lines)",
+	flag = "box_esp",
+	callback = function(v)
+		showBoxESP = v
+		for _, data in pairs(ESPObjects) do
+			if data.lineEsp then
+				for _, line in pairs(data.lineEsp) do
+					if line and line.Parent then
+						line.Visible = v and ESPEnabled
+					end
+				end
+			end
+		end
+	end
+})
+
+espFolder:AddToggle({
+	text = "Line ESP (Tracer)",
+	flag = "line_esp",
+	callback = function(v)
+		showLines = v
+		for _, data in pairs(ESPObjects) do
+			if data.tracerBeam then
+				data.tracerBeam.Enabled = v and ESPEnabled
+			end
+		end
+	end
+})
+
+espFolder:AddToggle({
+	text = "Show Names",
+	flag = "show_names",
+	callback = function(v)
+		showNames = v
+	end
+})
+
+espFolder:AddToggle({
+	text = "Show Health",
+	flag = "show_health",
+	callback = function(v)
+		showHealth = v
+	end
+})
+
+espFolder:AddToggle({
+	text = "Show Distance",
+	flag = "show_distance",
+	callback = function(v)
+		showDistance = v
+	end
+})
+
+espFolder:AddToggle({
+	text = "FOV Circle (3rd Person)",
+	flag = "fov_circle",
+	callback = function(v)
+		showFovCircle = v
+		for _, data in pairs(ESPObjects) do
+			if data.fovCircleGui then
+				data.fovCircleGui.Visible = v and ESPEnabled
+			end
+		end
+	end
+})
+
+espFolder:AddToggle({
+	text = "Ignore Team",
+	flag = "esp_ignore_team",
+	callback = function(v)
+		espIgnoreTeam = v
+		refreshAllESP()
+	end
+})
+
+espFolder:AddSlider({
+	text = "ESP Distance",
+	min = 100,
+	max = 2000,
+	def = 300,
+	callback = function(v)
+		ESP_MAX_DISTANCE = v
+	end
+})
+
+-- Tab Fly
+local flyFolder = tab:AddFolder("🕊 Fly")
+
+flyFolder:AddToggle({
+	text = "Enable Fly",
+	flag = "fly_toggle",
+	callback = function(v)
+		FlyEnabled = v
+		if v then StartFly() else StopFly() end
+	end
+})
+
+flyFolder:AddSlider({
+	text = "Fly Speed",
+	min = 10,
+	max = 200,
+	def = 50,
+	callback = function(v)
+		FlySpeed = v
+	end
+})
+
+flyFolder:AddLabel({text = "PC: WASD bay theo hướng nhìn"})
+flyFolder:AddLabel({text = "Space = Bay thẳng lên | Shift = Xuống"})
+flyFolder:AddLabel({text = "Mobile: Joystick + Nút ⬆⬇"})
+
+-- ==================== SCROLLING MƯỢT MÀ ====================
+task.wait(0.5)
+for _, container in pairs(tab:GetChildren()) do
+	pcall(function()
+		if container:IsA("ScrollingFrame") then
+			container.ScrollingDirection = Enum.ScrollingDirection.Y
+			container.ScrollBarThickness = 4
+			container.ScrollBarImageColor3 = Color3.fromRGB(255, 255, 255)
+			container.ScrollBarImageTransparency = 0.7
+			container.AutomaticCanvasSize = Enum.AutomaticSize.Y
+			container.ElasticBehavior = Enum.ElasticBehavior.Always
+			container.ScrollingEnabled = true
+			container.InputBegan:Connect(function(input)
+				if input.UserInputType == Enum.UserInputType.MouseWheel then
+					local newPos = container.CanvasPosition.Y - input.Position.Z * 40
+					container.CanvasPosition = Vector2.new(0, math.clamp(newPos, 0, math.max(0, container.CanvasSize.Y.Offset - container.AbsoluteSize.Y)))
+				end
+			end)
+		end
+		for _, child in pairs(container:GetChildren()) do
+			pcall(function()
+				if child:IsA("ScrollingFrame") then
+					child.ScrollingDirection = Enum.ScrollingDirection.Y
+					child.ScrollBarThickness = 4
+					child.ScrollBarImageColor3 = Color3.fromRGB(255, 255, 255)
+					child.ScrollBarImageTransparency = 0.7
+					child.AutomaticCanvasSize = Enum.AutomaticSize.Y
+					child.ElasticBehavior = Enum.ElasticBehavior.Always
+					child.ScrollingEnabled = true
+					child.InputBegan:Connect(function(input)
+						if input.UserInputType == Enum.UserInputType.MouseWheel then
+							local newPos = child.CanvasPosition.Y - input.Position.Z * 40
+							child.CanvasPosition = Vector2.new(0, math.clamp(newPos, 0, math.max(0, child.CanvasSize.Y.Offset - child.AbsoluteSize.Y)))
+						end
+					end)
+				end
+			end)
+		end
+	end)
+end
+
+library:Close()
+library:Init()
