@@ -1,0 +1,805 @@
+local library = loadstring(game:HttpGet("https://raw.githubusercontent.com/liebertsx/Tora-Library/main/src/librarynew",true))()
+local tab = library:CreateWindow("NducHub - One Tap Hub")
+
+-- SERVICES
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local Workspace = game:GetService("Workspace")
+local Camera = Workspace.CurrentCamera
+local LocalPlayer = Players.LocalPlayer
+
+-- VARIABLES
+local AimbotEnabled = false
+local aimbotFov = 150
+local aimbotSmooth = 0.05
+local aimbotMaxDist = 100
+local aimIgnoreTeam = true
+local autoAimEnabled = false
+local aimColor = Color3.fromRGB(255, 60, 60)
+
+local ESPEnabled = false
+local ESPObjects = {}
+local ESP_MAX_DISTANCE = 300
+local showNames = false
+local showHealth = false
+local showBox = false
+local showBoxESP = false
+local showLines = true
+local showFovCircle = true
+local espIgnoreTeam = true
+local showDistance = false
+local espColor = Color3.fromHSV(0.75, 1, 0.9)
+
+-- INSTANT KILL VARIABLES
+local instantKillEnabled = false
+local followConnection = nil
+local currentTarget = nil
+local INSTANT_KILL_DISTANCE = 4
+local HEIGHT_OFFSET = 0
+local allTargets = {}
+local currentIndex = 1
+
+-- LOBBY DETECTION
+local lobbyModel = Workspace:FindFirstChild("Lobby")
+local lobbyCenter = nil
+local LOBBY_RADIUS = 200
+
+if lobbyModel then
+    pcall(function()
+        lobbyCenter = lobbyModel:GetPivot().Position
+    end)
+end
+
+local function isInLobby(model)
+    if not lobbyCenter then return false end
+    if not model then return false end
+    local hrp = model:FindFirstChild("HumanoidRootPart")
+    if not hrp then return false end
+    return (hrp.Position - lobbyCenter).Magnitude <= LOBBY_RADIUS
+end
+
+local function isRealPlayer(model)
+    return Players:GetPlayerFromCharacter(model) ~= nil
+end
+
+-- FOV CIRCLE
+local fovGui = Instance.new("ScreenGui")
+fovGui.Name = "AimbotFovGui"
+fovGui.ResetOnSpawn = false
+fovGui.IgnoreGuiInset = true
+fovGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+fovGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+
+local fovCircle = Instance.new("Frame")
+fovCircle.Name = "FovCircle"
+fovCircle.AnchorPoint = Vector2.new(0.5, 0.5)
+fovCircle.BackgroundTransparency = 1
+fovCircle.BorderSizePixel = 0
+fovCircle.Size = UDim2.new(0, aimbotFov * 2, 0, aimbotFov * 2)
+fovCircle.Visible = false
+fovCircle.ZIndex = 100
+fovCircle.Parent = fovGui
+Instance.new("UICorner", fovCircle).CornerRadius = UDim.new(1, 0)
+
+local fovStroke = Instance.new("UIStroke")
+fovStroke.Color = aimColor
+fovStroke.Thickness = 1.5
+fovStroke.Transparency = 0.2
+fovStroke.Parent = fovCircle
+
+-- ==================== TARGET SYSTEM FOR INSTANT KILL ====================
+local function updateAllTargets()
+    allTargets = {}
+    
+    -- Real players (KHÔNG trong lobby)
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
+            if not isInLobby(plr.Character) then
+                table.insert(allTargets, plr.Character)
+            end
+        end
+    end
+    
+    -- Bots (KHÔNG trong lobby)
+    for _, obj in ipairs(Workspace:GetChildren()) do
+        if obj:IsA("Model")
+            and obj:FindFirstChild("Humanoid")
+            and obj:FindFirstChild("HumanoidRootPart")
+            and not isRealPlayer(obj)
+            and not isInLobby(obj) then
+            
+            if obj.Name == "Astration"
+               or obj.Name:find("Astration")
+               or obj.Name:find("Bot")
+               or obj.Name:find("Dummy")
+               or obj.Name:find("NPC") then
+                table.insert(allTargets, obj)
+            end
+        end
+    end
+end
+
+updateAllTargets()
+
+-- Auto refresh targets
+Players.PlayerAdded:Connect(function()
+    task.wait(0.5)
+    updateAllTargets()
+end)
+Players.PlayerRemoving:Connect(updateAllTargets)
+Workspace.ChildAdded:Connect(function(child)
+    task.wait(0.2)
+    if child:IsA("Model") and child:FindFirstChild("Humanoid") then
+        updateAllTargets()
+    end
+end)
+Workspace.ChildRemoved:Connect(updateAllTargets)
+
+-- ==================== INSTANT KILL FUNCTIONS ====================
+local function isTargetAlive(model)
+    return model and model:FindFirstChild("HumanoidRootPart")
+        and model:FindFirstChild("Humanoid")
+        and model.Humanoid.Health > 0
+end
+
+local function resetCamera()
+    Camera.CameraType = Enum.CameraType.Custom
+end
+
+local function followTarget(model)
+    if followConnection then followConnection:Disconnect() end
+    currentTarget = model
+    Camera.CameraType = Enum.CameraType.Scriptable
+    
+    followConnection = RunService.Heartbeat:Connect(function()
+        if not instantKillEnabled 
+           or not isTargetAlive(model)
+           or isInLobby(LocalPlayer.Character)
+           or isInLobby(model) then
+            
+            if followConnection then followConnection:Disconnect() end
+            followConnection = nil
+            currentTarget = nil
+            resetCamera()
+            return
+        end
+        
+        local Character = LocalPlayer.Character
+        if not Character then return end
+        
+        local HumanoidRootPart = Character:FindFirstChild("HumanoidRootPart")
+        if not HumanoidRootPart then return end
+        
+        local targetHRP = model.HumanoidRootPart
+        local targetHead = model:FindFirstChild("Head")
+        local myHead = Character:FindFirstChild("Head")
+        
+        -- Noclip
+        HumanoidRootPart.CanCollide = false
+        
+        -- Position behind target
+        local targetPos = targetHRP.Position
+        local lookVector = targetHRP.CFrame.LookVector
+        local myPos = targetPos + Vector3.new(0, HEIGHT_OFFSET, 0) - (lookVector * INSTANT_KILL_DISTANCE)
+        
+        HumanoidRootPart.CFrame = CFrame.lookAt(myPos, targetPos)
+        
+        -- Camera lock on head
+        local myEyePos = myHead and myHead.Position or (HumanoidRootPart.Position + Vector3.new(0, 2, 0))
+        local targetLookPos = targetHead and targetHead.Position or (targetPos + Vector3.new(0, 1.5, 0))
+        Camera.CFrame = CFrame.lookAt(myEyePos, targetLookPos)
+    end)
+end
+
+-- Respawn handler
+LocalPlayer.CharacterAdded:Connect(function(newChar)
+    task.wait(0.5)
+    resetCamera()
+    if instantKillEnabled and currentTarget and isTargetAlive(currentTarget) then
+        followTarget(currentTarget)
+    end
+end)
+
+-- Main cycling loop for Instant Kill
+spawn(function()
+    while true do
+        task.wait(0.1)
+        
+        if not instantKillEnabled then
+            if followConnection then followConnection:Disconnect() end
+            followConnection = nil
+            currentTarget = nil
+            resetCamera()
+            continue
+        end
+        
+        if #allTargets == 0 then
+            resetCamera()
+            continue
+        end
+        
+        local found = false
+        for i = 1, #allTargets do
+            local index = (currentIndex + i - 2) % #allTargets + 1
+            local model = allTargets[index]
+            
+            if isTargetAlive(model) and not isInLobby(model) then
+                followTarget(model)
+                currentIndex = index
+                found = true
+                break
+            end
+        end
+        
+        if found then
+            repeat
+                task.wait(0.1)
+            until not instantKillEnabled or not isTargetAlive(currentTarget) or isInLobby(currentTarget)
+            
+            if followConnection then followConnection:Disconnect() end
+            followConnection = nil
+            currentTarget = nil
+            resetCamera()
+        else
+            resetCamera()
+        end
+    end
+end)
+
+-- ==================== ESP FUNCTIONS ====================
+local function removeESP(plr)
+    local d = ESPObjects[plr]
+    if not d then return end
+    if d.bill and d.bill.Parent then d.bill:Destroy() end
+    if d.lineEsp then
+        for _, line in pairs(d.lineEsp) do
+            if line and line.Parent then line:Destroy() end
+        end
+    end
+    if d.tracerBeam and d.tracerBeam.Parent then d.tracerBeam:Destroy() end
+    if d.tracerAttachment0 and d.tracerAttachment0.Parent then d.tracerAttachment0:Destroy() end
+    if d.tracerAttachment1 and d.tracerAttachment1.Parent then d.tracerAttachment1:Destroy() end
+    if d.fovCircleGui and d.fovCircleGui.Parent then d.fovCircleGui:Destroy() end
+    ESPObjects[plr] = nil
+end
+
+local function createESP(plr, char)
+    if plr == LocalPlayer then return end
+    if espIgnoreTeam and plr.Team and LocalPlayer.Team and plr.Team == LocalPlayer.Team then return end
+    if not char then return end
+    if isInLobby(char) then return end -- Không ESP player trong lobby
+
+    removeESP(plr)
+
+    local head = char:FindFirstChild("Head")
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if not head or not hrp or not hum then return end
+
+    local bill = Instance.new("BillboardGui")
+    bill.Name = "ESP_Bill"
+    bill.Adornee = hrp
+    bill.AlwaysOnTop = true
+    bill.Size = UDim2.new(0, 130, 0, 60)
+    bill.StudsOffset = Vector3.new(0, 3.2, 0)
+    bill.ResetOnSpawn = false
+    bill.Parent = LocalPlayer:WaitForChild("PlayerGui")
+
+    local nameLabel = Instance.new("TextLabel")
+    nameLabel.Size = UDim2.new(1, 0, 0.5, 0)
+    nameLabel.BackgroundTransparency = 1
+    nameLabel.Text = plr.DisplayName
+    nameLabel.TextColor3 = espColor
+    nameLabel.Font = Enum.Font.GothamBold
+    nameLabel.TextSize = 13
+    nameLabel.TextStrokeTransparency = 0.4
+    nameLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+    nameLabel.Visible = showNames
+    nameLabel.Parent = bill
+
+    local healthBg = Instance.new("Frame")
+    healthBg.Size = UDim2.new(0.8, 0, 0, 4)
+    healthBg.Position = UDim2.new(0.1, 0, 0.55, 0)
+    healthBg.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    healthBg.BorderSizePixel = 0
+    Instance.new("UICorner", healthBg).CornerRadius = UDim.new(1, 0)
+    healthBg.Visible = showHealth
+    healthBg.Parent = bill
+
+    local healthBar = Instance.new("Frame")
+    healthBar.Size = UDim2.new(hum.Health / math.max(hum.MaxHealth, 1), 0, 1, 0)
+    healthBar.BackgroundColor3 = Color3.fromRGB(80, 220, 80)
+    healthBar.BorderSizePixel = 0
+    Instance.new("UICorner", healthBar).CornerRadius = UDim.new(1, 0)
+    healthBar.Parent = healthBg
+
+    local distLabel = Instance.new("TextLabel")
+    distLabel.Size = UDim2.new(1, 0, 0.35, 0)
+    distLabel.Position = UDim2.new(0, 0, 0.65, 0)
+    distLabel.BackgroundTransparency = 1
+    distLabel.Text = ""
+    distLabel.TextColor3 = Color3.fromRGB(180, 180, 180)
+    distLabel.Font = Enum.Font.Code
+    distLabel.TextSize = 10
+    distLabel.TextStrokeTransparency = 0.5
+    distLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+    distLabel.Visible = showDistance
+    distLabel.Parent = bill
+
+    local lineEsp = {}
+    local boxSize = Vector3.new(4.5, 6.5, 4.5)
+    local function createLine(name, cframe, length)
+        local line = Instance.new("LineHandleAdornment")
+        line.Name = name
+        line.Adornee = hrp
+        line.AlwaysOnTop = true
+        line.ZIndex = 5
+        line.Thickness = 2
+        line.Color3 = espColor
+        line.Transparency = 0
+        line.Visible = showBoxESP and ESPEnabled
+        line.Length = length
+        line.CFrame = cframe
+        line.Parent = Workspace
+        return line
+    end
+
+    local halfSize = boxSize / 2
+    lineEsp.bottom1 = createLine("Line_Bottom1", CFrame.new(0, -halfSize.Y, 0) * CFrame.Angles(0, 0, math.rad(90)), boxSize.X)
+    lineEsp.bottom2 = createLine("Line_Bottom2", CFrame.new(0, -halfSize.Y, 0) * CFrame.Angles(0, math.rad(90), 0), boxSize.Z)
+    lineEsp.bottom3 = createLine("Line_Bottom3", CFrame.new(-halfSize.X, -halfSize.Y, halfSize.Z) * CFrame.Angles(0, 0, math.rad(90)), boxSize.X)
+    lineEsp.bottom4 = createLine("Line_Bottom4", CFrame.new(halfSize.X, -halfSize.Y, 0) * CFrame.Angles(0, math.rad(90), 0), boxSize.Z)
+    lineEsp.top1 = createLine("Line_Top1", CFrame.new(0, halfSize.Y, 0) * CFrame.Angles(0, 0, math.rad(90)), boxSize.X)
+    lineEsp.top2 = createLine("Line_Top2", CFrame.new(0, halfSize.Y, 0) * CFrame.Angles(0, math.rad(90), 0), boxSize.Z)
+    lineEsp.top3 = createLine("Line_Top3", CFrame.new(-halfSize.X, halfSize.Y, halfSize.Z) * CFrame.Angles(0, 0, math.rad(90)), boxSize.X)
+    lineEsp.top4 = createLine("Line_Top4", CFrame.new(halfSize.X, halfSize.Y, 0) * CFrame.Angles(0, math.rad(90), 0), boxSize.Z)
+    lineEsp.vert1 = createLine("Line_Vert1", CFrame.new(-halfSize.X, 0, -halfSize.Z), boxSize.Y)
+    lineEsp.vert2 = createLine("Line_Vert2", CFrame.new(halfSize.X, 0, -halfSize.Z), boxSize.Y)
+    lineEsp.vert3 = createLine("Line_Vert3", CFrame.new(-halfSize.X, 0, halfSize.Z), boxSize.Y)
+    lineEsp.vert4 = createLine("Line_Vert4", CFrame.new(halfSize.X, 0, halfSize.Z), boxSize.Y)
+
+    local tracerAttachment0 = Instance.new("Attachment")
+    tracerAttachment0.Name = "TracerAttachment0"
+    tracerAttachment0.Parent = hrp
+
+    local tracerAttachment1 = Instance.new("Attachment")
+    tracerAttachment1.Name = "TracerAttachment1"
+    local myHrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+    tracerAttachment1.Parent = myHrp or hrp
+
+    local tracerBeam = Instance.new("Beam")
+    tracerBeam.Name = "TracerBeam"
+    tracerBeam.Attachment0 = tracerAttachment0
+    tracerBeam.Attachment1 = tracerAttachment1
+    tracerBeam.Color = ColorSequence.new(espColor)
+    tracerBeam.Width0 = 0.15
+    tracerBeam.Width1 = 0.15
+    tracerBeam.FaceCamera = true
+    tracerBeam.Segments = 1
+    tracerBeam.Transparency = NumberSequence.new(0.3)
+    tracerBeam.Enabled = showLines and ESPEnabled
+    tracerBeam.Parent = hrp
+
+    local fovCircleFrame = Instance.new("Frame")
+    fovCircleFrame.Name = "FOV_Circle_" .. plr.Name
+    fovCircleFrame.Size = UDim2.new(0, 60, 0, 60)
+    fovCircleFrame.BackgroundTransparency = 1
+    fovCircleFrame.BorderSizePixel = 0
+    fovCircleFrame.Visible = false
+    fovCircleFrame.ZIndex = 100
+    fovCircleFrame.Parent = fovGui
+
+    local fovCircleStroke = Instance.new("UIStroke")
+    fovCircleStroke.Color = espColor
+    fovCircleStroke.Thickness = 2
+    fovCircleStroke.Transparency = 0.3
+    fovCircleStroke.Parent = fovCircleFrame
+
+    Instance.new("UICorner", fovCircleFrame).CornerRadius = UDim.new(1, 0)
+
+    ESPObjects[plr] = {
+        bill = bill,
+        nameLabel = nameLabel,
+        healthBar = healthBar,
+        healthBg = healthBg,
+        distLabel = distLabel,
+        lineEsp = lineEsp,
+        tracerAttachment0 = tracerAttachment0,
+        tracerAttachment1 = tracerAttachment1,
+        tracerBeam = tracerBeam,
+        fovCircleGui = fovCircleFrame,
+        fovCircleStroke = fovCircleStroke,
+        hrp = hrp,
+        hum = hum,
+        char = char,
+    }
+end
+
+-- ==================== PLAYER EVENTS ====================
+Players.PlayerAdded:Connect(function(player)
+    player.CharacterAdded:Connect(function(char)
+        task.wait(1)
+        if ESPEnabled then createESP(player, char) end
+    end)
+end)
+
+Players.PlayerRemoving:Connect(function(player)
+    removeESP(player)
+end)
+
+-- ==================== MAIN LOOP ====================
+RunService.RenderStepped:Connect(function()
+    local localChar = LocalPlayer.Character
+    local localHrp = localChar and localChar:FindFirstChild("HumanoidRootPart")
+
+    if AimbotEnabled then
+        local mouse = UserInputService:GetMouseLocation()
+        fovCircle.Position = UDim2.new(0, mouse.X, 0, mouse.Y)
+        fovCircle.Size = UDim2.new(0, aimbotFov * 2, 0, aimbotFov * 2)
+        fovStroke.Color = aimColor
+        fovCircle.Visible = true
+    else
+        fovCircle.Visible = false
+    end
+
+    for plr, data in pairs(ESPObjects) do
+        if not plr.Character or not data.hrp or not data.hrp.Parent or not data.char or not data.char.Parent then
+            removeESP(plr)
+            continue
+        end
+
+        -- Check if in lobby
+        if isInLobby(plr.Character) then
+            removeESP(plr)
+            continue
+        end
+
+        local withinRange = true
+        if localHrp and data.hrp then
+            local d3 = (data.hrp.Position - localHrp.Position).Magnitude
+            if d3 > ESP_MAX_DISTANCE then withinRange = false end
+        end
+
+        data.nameLabel.Visible = showNames and ESPEnabled and withinRange
+        data.healthBg.Visible = showHealth and ESPEnabled and withinRange
+        data.distLabel.Visible = showDistance and ESPEnabled and withinRange
+
+        if data.lineEsp then
+            for _, line in pairs(data.lineEsp) do
+                if line and line.Parent then
+                    line.Visible = showBoxESP and ESPEnabled
+                    line.Color3 = espColor
+                end
+            end
+        end
+
+        if data.tracerBeam and data.tracerBeam.Parent then
+            data.tracerBeam.Enabled = showLines and ESPEnabled and withinRange
+            data.tracerBeam.Color = ColorSequence.new(espColor)
+            if localHrp and data.tracerAttachment1 then
+                data.tracerAttachment1.Parent = localHrp
+            end
+        end
+
+        if data.fovCircleGui and data.fovCircleGui.Parent then
+            local head = plr.Character and plr.Character:FindFirstChild("Head")
+            if head then
+                local screenPos, onScreen = Camera:WorldToViewportPoint(head.Position)
+                if onScreen and withinRange then
+                    local mousePos = UserInputService:GetMouseLocation()
+                    local screenVec = Vector2.new(screenPos.X, screenPos.Y)
+                    local dist2d = (screenVec - mousePos).Magnitude
+                    local inFov = dist2d <= aimbotFov
+                    data.fovCircleGui.Visible = showFovCircle and ESPEnabled and inFov
+                    if data.fovCircleGui.Visible then
+                        local circleSize = 60
+                        if localHrp and data.hrp then
+                            local worldDist = (data.hrp.Position - localHrp.Position).Magnitude
+                            local scale = math.clamp(200 / worldDist, 0.3, 1.5)
+                            circleSize = 60 * scale
+                        end
+                        data.fovCircleGui.Size = UDim2.new(0, circleSize, 0, circleSize)
+                        data.fovCircleGui.Position = UDim2.new(0, screenPos.X - circleSize/2, 0, screenPos.Y - circleSize/2)
+                        if data.fovCircleStroke then
+                            data.fovCircleStroke.Color = espColor
+                        end
+                    end
+                else
+                    data.fovCircleGui.Visible = false
+                end
+            end
+        end
+
+        if not ESPEnabled then continue end
+        data.nameLabel.Text = plr.DisplayName
+        data.nameLabel.TextColor3 = espColor
+
+        local hum = data.hum
+        if hum and hum.Parent then
+            local pct = math.clamp(hum.Health / math.max(hum.MaxHealth, 1), 0, 1)
+            data.healthBar.Size = UDim2.new(pct, 0, 1, 0)
+        end
+
+        if localHrp then
+            local dist = math.floor((data.hrp.Position - localHrp.Position).Magnitude)
+            data.distLabel.Text = dist .. " studs"
+        end
+    end
+
+    if not AimbotEnabled then return end
+    local rmbHeld = UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2)
+    if not rmbHeld and not autoAimEnabled then return end
+
+    local mousePos = UserInputService:GetMouseLocation()
+    local bestPlayer = nil
+    local bestDist = math.huge
+
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr == LocalPlayer then continue end
+        if aimIgnoreTeam and plr.Team and LocalPlayer.Team and plr.Team == LocalPlayer.Team then continue end
+
+        local char = plr.Character
+        if not char then continue end
+        if isInLobby(char) then continue end -- Loại bỏ aimbot vào player trong lobby
+        
+        local head = char:FindFirstChild("Head")
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if not head or not hum or hum.Health <= 0 then continue end
+
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        local worldDist = (hrp and localHrp) and (hrp.Position - localHrp.Position).Magnitude or math.huge
+        if worldDist > aimbotMaxDist then continue end
+
+        local screenPos, onScreen = Camera:WorldToViewportPoint(head.Position)
+        local dist2d
+        if onScreen then
+            local screenVec = Vector2.new(screenPos.X, screenPos.Y)
+            dist2d = (screenVec - mousePos).Magnitude
+        elseif autoAimEnabled then
+            dist2d = aimbotFov
+        else
+            continue
+        end
+
+        if dist2d < aimbotFov and worldDist < bestDist then
+            bestDist = worldDist
+            bestPlayer = plr
+        end
+    end
+
+    if not bestPlayer then return end
+    local char = bestPlayer.Character
+    if not char then return end
+    local head = char:FindFirstChild("Head")
+    if not head then return end
+
+    local screenPos = Camera:WorldToViewportPoint(head.Position)
+    local current = UserInputService:GetMouseLocation()
+    local goal = Vector2.new(screenPos.X, screenPos.Y)
+    local lerpAlpha = 1 - (math.clamp(aimbotSmooth, 0, 0.9) * 0.9)
+    local delta = (goal - current) * lerpAlpha
+    mousemoverel(delta.X, delta.Y)
+end)
+
+-- ==================== UI ====================
+local aimbotFolder = tab:AddFolder("🎯 AimBot")
+
+aimbotFolder:AddToggle({
+    text = "Enable AimBot",
+    flag = "aimbot_toggle",
+    callback = function(v)
+        AimbotEnabled = v
+    end
+})
+
+aimbotFolder:AddSlider({
+    text = "FOV Radius",
+    min = 30,
+    max = 500,
+    def = 150,
+    callback = function(v)
+        aimbotFov = v
+    end
+})
+
+aimbotFolder:AddSlider({
+    text = "Smoothness",
+    min = 0,
+    max = 100,
+    def = 5,
+    callback = function(v)
+        aimbotSmooth = v / 100
+    end
+})
+
+aimbotFolder:AddSlider({
+    text = "Max Distance",
+    min = 10,
+    max = 500,
+    def = 100,
+    callback = function(v)
+        aimbotMaxDist = v
+    end
+})
+
+aimbotFolder:AddToggle({
+    text = "Ignore Team",
+    flag = "aim_ignore_team",
+    callback = function(v)
+        aimIgnoreTeam = v
+    end
+})
+
+aimbotFolder:AddToggle({
+    text = "Auto Aim 360° (No RMB)",
+    flag = "auto_aim",
+    callback = function(v)
+        autoAimEnabled = v
+    end
+})
+
+aimbotFolder:AddLabel({text = "PC: Giữ RMB = Ghim | Auto AIM: Tự động"})
+
+-- ==================== INSTANT KILL FOLDER ====================
+local instantKillFolder = tab:AddFolder("⚡ Instant Kill")
+
+instantKillFolder:AddToggle({
+    text = "Enable Instant Kill",
+    flag = "instant_kill_toggle",
+    callback = function(v)
+        instantKillEnabled = v
+        if not v then
+            if followConnection then
+                followConnection:Disconnect()
+                followConnection = nil
+            end
+            currentTarget = nil
+            resetCamera()
+        end
+    end
+})
+
+instantKillFolder:AddSlider({
+    text = "Distance Behind Target",
+    min = 2,
+    max = 10,
+    def = 4,
+    callback = function(v)
+        INSTANT_KILL_DISTANCE = v
+    end
+})
+
+instantKillFolder:AddLabel({text = "Tự động dịch chuyển sau lưng địch"})
+instantKillFolder:AddLabel({text = "Loại bỏ mục tiêu trong Lobby"})
+
+local espFolder = tab:AddFolder("👁 ESP Player")
+
+espFolder:AddToggle({
+    text = "Enable ESP",
+    flag = "esp_toggle",
+    callback = function(v)
+        ESPEnabled = v
+        if v then
+            for _, plr in ipairs(Players:GetPlayers()) do
+                if plr ~= LocalPlayer and plr.Character then
+                    createESP(plr, plr.Character)
+                end
+            end
+        else
+            for plr in pairs(ESPObjects) do removeESP(plr) end
+        end
+    end
+})
+
+espFolder:AddToggle({
+    text = "Box ESP (Lines)",
+    flag = "box_esp",
+    callback = function(v)
+        showBoxESP = v
+        for _, data in pairs(ESPObjects) do
+            if data.lineEsp then
+                for _, line in pairs(data.lineEsp) do
+                    if line and line.Parent then
+                        line.Visible = v and ESPEnabled
+                    end
+                end
+            end
+        end
+    end
+})
+
+espFolder:AddToggle({
+    text = "Line ESP (Tracer)",
+    flag = "line_esp",
+    callback = function(v)
+        showLines = v
+        for _, data in pairs(ESPObjects) do
+            if data.tracerBeam then
+                data.tracerBeam.Enabled = v and ESPEnabled
+            end
+        end
+    end
+})
+
+espFolder:AddToggle({
+    text = "Show Names",
+    flag = "show_names",
+    callback = function(v)
+        showNames = v
+    end
+})
+
+espFolder:AddToggle({
+    text = "Show Health",
+    flag = "show_health",
+    callback = function(v)
+        showHealth = v
+    end
+})
+
+espFolder:AddToggle({
+    text = "Show Distance",
+    flag = "show_distance",
+    callback = function(v)
+        showDistance = v
+    end
+})
+
+espFolder:AddToggle({
+    text = "FOV Circle (3rd Person)",
+    flag = "fov_circle",
+    callback = function(v)
+        showFovCircle = v
+        for _, data in pairs(ESPObjects) do
+            if data.fovCircleGui then
+                data.fovCircleGui.Visible = v and ESPEnabled
+            end
+        end
+    end
+})
+
+espFolder:AddToggle({
+    text = "Ignore Team",
+    flag = "esp_ignore_team",
+    callback = function(v)
+        espIgnoreTeam = v
+        if ESPEnabled then
+            for plr in pairs(ESPObjects) do removeESP(plr) end
+            for _, plr in ipairs(Players:GetPlayers()) do
+                if plr ~= LocalPlayer and plr.Character then
+                    createESP(plr, plr.Character)
+                end
+            end
+        end
+    end
+})
+
+espFolder:AddSlider({
+    text = "ESP Distance",
+    min = 100,
+    max = 2000,
+    def = 300,
+    callback = function(v)
+        ESP_MAX_DISTANCE = v
+    end
+})
+
+library:Init()
+
+-- SCROLL MƯỢT
+task.wait(0.5)
+for _, v in pairs(tab:GetDescendants()) do
+    if v:IsA("ScrollingFrame") then
+        v.ScrollingDirection = Enum.ScrollingDirection.Y
+        v.ScrollBarThickness = 4
+        v.ScrollBarImageColor3 = Color3.fromRGB(255,255,255)
+        v.ScrollBarImageTransparency = 0.7
+        v.AutomaticCanvasSize = Enum.AutomaticSize.Y
+        v.ElasticBehavior = Enum.ElasticBehavior.Always
+        v.ScrollingEnabled = true
+    end
+end
+
+print("NducHub Loaded | AimBot + ESP + Instant Kill Ready!")
+print("Lobby detected:", lobbyCenter ~= nil, "- Radius:", LOBBY_RADIUS)
